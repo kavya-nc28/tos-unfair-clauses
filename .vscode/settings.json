@@ -1,0 +1,7 @@
+{
+  "python.defaultInterpreterPath": ".venv/Scripts/activate/Scripts/python.exe",
+  "python.analysis.extraPaths": ["./src"],
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportMissingImports": "information"
+  }
+}

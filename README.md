@@ -46,6 +46,23 @@ It is the final project for the \*\*Human-Centred Natural Language Processing\*\
 
 
 
+
+## Installation
+
+To set up the project locally and ensure all dependencies are consistent across the team, run the following commands:
+
+```bash
+# 1. Create a virtual environment (recommended)
+python -m venv venv
+
+# 2. Activate the environment
+# On macOS/Linux:
+source venv/bin/activate  
+# On Windows:
+.\venv\Scripts\activate
+
+# 3. Install required packages
+pip install -r requirements.txt
 \## Repository structure
 
 
@@ -159,6 +176,5 @@ tos-unfair-clauses/
 &#x20;   ├── run\_contrastive.sh
 
 &#x20;   └── run\_app.sh
-
 
 

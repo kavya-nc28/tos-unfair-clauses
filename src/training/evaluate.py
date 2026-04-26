@@ -29,7 +29,7 @@ def evaluate_checkpoint(checkpoint_path: Path, device: torch.device) -> None:
 
     model = BaselineLegalBert(num_labels=NUM_LABELS, use_binary_head=True)
     state_dict = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict, strict=False)
     model.to(device)
     model.eval()
 

@@ -13,6 +13,8 @@ import torch
 from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
 from sklearn.metrics import f1_score
+from typing import cast
+from torch.utils.data import DataLoader, Dataset as TorchDataset
 
 from src.config import (
     MODELS_DIR,
@@ -27,7 +29,7 @@ from src.models.contrastive_legalbert import ContrastiveLegalBert
 torch.manual_seed(SEED)
 
 
-def collate_fn(batch):
+def collate_fn(batch: list) -> dict:
     return {
         "input_ids":      torch.stack([b["input_ids"]      for b in batch]),
         "attention_mask": torch.stack([b["attention_mask"]  for b in batch]),
@@ -36,7 +38,13 @@ def collate_fn(batch):
     }
 
 
-def train_epoch(model, loader, optimizer, scheduler, device):
+def train_epoch(
+    model:     ContrastiveLegalBert,                          
+    loader:    DataLoader,
+    optimizer: torch.optim.Optimizer,
+    scheduler,
+    device:    torch.device,
+) -> float:
     model.train()
     total_loss = 0.0
     for batch in loader:
@@ -61,7 +69,11 @@ def train_epoch(model, loader, optimizer, scheduler, device):
 
 
 @torch.no_grad()
-def evaluate(model, loader, device):
+def evaluate(
+    model:  ContrastiveLegalBert,                            
+    loader: DataLoader,
+    device: torch.device,
+) -> float:
     model.eval()
     total_loss = 0.0
     for batch in loader:
@@ -78,7 +90,11 @@ def evaluate(model, loader, device):
 
 
 @torch.no_grad()
-def find_best_threshold(model, loader, device):
+def find_best_threshold(
+    model:  ContrastiveLegalBert,                             
+    loader: DataLoader,
+    device: torch.device,
+) -> tuple[float, float]:
     model.eval()
     all_probs, all_y = [], []
     for batch in loader:
@@ -105,9 +121,12 @@ def find_best_threshold(model, loader, device):
     print(f"Best threshold: {best_thr:.2f}  micro_F1={best_f1:.4f}")
     return float(best_thr), float(best_f1)
 
-# after line 107, ADD this entire new function:
 @torch.no_grad()
-def find_best_binary_threshold(model, loader, device):
+def find_best_binary_threshold(
+    model:  ContrastiveLegalBert,                             
+    loader: DataLoader,
+    device: torch.device,
+) -> float:
     model.eval()
     all_probs, all_y = [], []
     for batch in loader:
@@ -115,7 +134,7 @@ def find_best_binary_threshold(model, loader, device):
         attention_mask = batch["attention_mask"].to(device)
         labels_bin     = batch["label_binary"].cpu().numpy()
         outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-        logits  = outputs["binary_logits"].cpu().numpy().squeeze()
+        logits  = outputs["logits_binary"].cpu().numpy().reshape(-1)  
         probs   = 1 / (1 + np.exp(-logits))
         all_probs.append(probs)
         all_y.append(labels_bin)
@@ -140,13 +159,13 @@ def main():
     ds, _ = prepare_unfair_tos_datasets(max_length=256)
 
     train_loader = DataLoader(
-        ds["train"],
+        cast(TorchDataset, ds["train"]),
         batch_size=BATCH_SIZE,
         shuffle=True,
         collate_fn=collate_fn,
     )
     val_loader = DataLoader(
-        ds["validation"],
+        cast(TorchDataset, ds["validation"]),
         batch_size=BATCH_SIZE,
         shuffle=False,
         collate_fn=collate_fn,

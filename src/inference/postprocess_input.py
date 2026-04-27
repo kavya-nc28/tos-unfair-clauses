@@ -1,5 +1,6 @@
 from __future__ import annotations
-
+from src.inference.severity_mapping import severity_label
+import numpy as np
 from typing import List, Dict
 import math
 
@@ -24,16 +25,18 @@ def prob_to_band(score: float) -> str:
     MEDIUM  : somewhat suspicious
     SAFE    : low evidence of unfairness
     """
-    if score >= 0.61:
+    if score >= 0.75:
+        return "CRITICAL"
+    if score >= 0.50:
         return "HIGH"
-    if score >= 0.31:
+    if score >= 0.25:
         return "MEDIUM"
     return "SAFE"
 
 
 def prob_to_severity(score: float) -> int:
     """
-    Map [0,1] probability to integer severity score 1–10.
+    Map [0,1] probability to integer severity score 1 to 10.
     """
     return max(1, min(10, math.ceil(score * 10)))
 
@@ -94,6 +97,7 @@ def build_clause_results(
             "predicted_labels": pred_labels,
             "severity_score": severity_score,
             "severity_band": severity_band,
+            "verdict": severity_label(severity_score),
             "explanation": explain_labels(pred_labels),
             "raw_scores": {
                 LABEL_NAMES[i]: round(float(row[i]), 4)
@@ -105,17 +109,29 @@ def build_clause_results(
 
     return results
 
+def overall_safety_score(probs_binary: np.ndarray) -> int:
+    """
+    Returns 0–100 where 100 = fully safe, 0 = fully unsafe.
+    Driven by the model's binary unfairness probabilities.
+    """
+    mean_unfair = float(np.mean(probs_binary))   # avg prob of being unfair
+    safety = round((1 - mean_unfair) * 100)
+    return max(0, min(100, safety))
 
 def summarize_document(results: List[Dict]) -> Dict:
+
     """
     Aggregate per-clause results into a document-level summary.
     """
     num_clauses = len(results)
-    high_risk = sum(r["severity_band"] == "HIGH" for r in results)
-    medium_risk = sum(r["severity_band"] == "MEDIUM" for r in results)
-    safe = sum(r["severity_band"] == "SAFE" for r in results)
+    critical    = sum(r["severity_band"] == "CRITICAL" for r in results)
+    high_risk   = sum(r["severity_band"] == "HIGH"     for r in results)
+    medium_risk = sum(r["severity_band"] == "MEDIUM"   for r in results)
+    safe        = sum(r["severity_band"] == "SAFE"     for r in results)
 
-    if high_risk > 0:
+    if critical > 0:
+        overall = "Critical unfair clauses detected. Do NOT agree."
+    elif high_risk > 0:
         overall = "High risk Terms of Service detected."
     elif medium_risk > 0:
         overall = "Some potentially problematic clauses detected."
@@ -123,9 +139,10 @@ def summarize_document(results: List[Dict]) -> Dict:
         overall = "Mostly safe according to the current model."
 
     return {
-        "num_clauses": num_clauses,
-        "high_risk": high_risk,
-        "medium_risk": medium_risk,
-        "safe": safe,
+        "num_clauses":     num_clauses,
+        "critical":        critical,
+        "high_risk":       high_risk,
+        "medium_risk":     medium_risk,
+        "safe":            safe,
         "overall_verdict": overall,
     }

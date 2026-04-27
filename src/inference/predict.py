@@ -1,20 +1,45 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Union, overload, Literal
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizerBase 
 
-from src.config import BASE_MODEL_NAME, MAX_LENGTH
+from src.config import BASE_MODEL_NAME, MAX_LENGTH, ACTIVE_MODEL
 from src.models.baseline_legalbert import BaselineLegalBert
+from src.models.contrastive_legalbert import ContrastiveLegalBert
 
+AnyModel = Union[BaselineLegalBert, ContrastiveLegalBert]
+
+@overload
+def load_model_and_tokenizer(
+    checkpoint_path: str | Path,
+    device: str | torch.device,
+    model_type: Literal["contrastive"],
+) -> Tuple[ContrastiveLegalBert, PreTrainedTokenizerBase]: ...
+
+@overload
+def load_model_and_tokenizer(
+    checkpoint_path: str | Path,
+    device: str | torch.device,
+    model_type: Literal["baseline"],
+) -> Tuple[BaselineLegalBert, PreTrainedTokenizerBase]: ...
+
+@overload
+def load_model_and_tokenizer(
+    checkpoint_path: str | Path,
+    device: str | torch.device = ...,
+    model_type: str = ...,
+) -> Tuple[AnyModel, PreTrainedTokenizerBase]: ...
 
 def load_model_and_tokenizer(
     checkpoint_path: str | Path,
     device: str | torch.device = "cpu",
-) -> Tuple[BaselineLegalBert, AutoTokenizer]:
+    model_type: str = ACTIVE_MODEL,
+) -> Tuple[AnyModel, PreTrainedTokenizerBase]:
+
     """
     Load the trained baseline LegalBERT model and tokenizer.
 
@@ -25,9 +50,19 @@ def load_model_and_tokenizer(
 
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_NAME)
 
-    model = BaselineLegalBert(num_labels=8, use_binary_head=True)
-    state_dict = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(state_dict)
+    if model_type == "contrastive":
+        model      = ContrastiveLegalBert(num_labels=8)
+        state_dict = torch.load(checkpoint_path, map_location=device)
+        missing, unexpected = model.load_state_dict(state_dict, strict=False)
+        if missing:
+            print(f"⚠️  Missing keys (may be OK): {missing}")
+        if unexpected:
+            print(f"⚠️  Ignored keys: {unexpected}")
+    else:
+        model      = BaselineLegalBert(num_labels=8, use_binary_head=True)
+        state_dict = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(state_dict, strict=False)
+
     model.to(device)
     model.eval()
 
@@ -36,8 +71,8 @@ def load_model_and_tokenizer(
 
 def predict_probabilities(
     clauses: List[Dict],
-    model: BaselineLegalBert,
-    tokenizer: AutoTokenizer,
+    model: AnyModel,
+    tokenizer: PreTrainedTokenizerBase,
     device: str | torch.device = "cpu",
     batch_size: int = 16,
 ) -> Tuple[np.ndarray, np.ndarray]:

@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import numpy as np
 import torch
+from torch.utils.data import DataLoader, Dataset as TorchDataset
+from typing import cast
 from torch.utils.data import DataLoader
 from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 
@@ -17,7 +19,7 @@ NUM_LABELS = 8
 MAX_LENGTH = 256
 
 
-def sigmoid(x):
+def sigmoid(x: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-x))
 
 
@@ -37,7 +39,7 @@ def main():
     # Load data
     ds, _ = prepare_unfair_tos_datasets(max_length=MAX_LENGTH)
     test_loader = DataLoader(
-        ds["test"],
+        cast(TorchDataset, ds["test"]),
         batch_size=BATCH_SIZE,
         shuffle=False,
         collate_fn=collate_fn,
@@ -67,7 +69,7 @@ def main():
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
 
             all_logits.append(outputs["logits"].cpu())
-            all_binary_logits.append(outputs["binary_logits"].cpu())
+            all_binary_logits.append(outputs["logits_binary"].cpu())
             all_labels.append(batch["labels"].cpu())
             all_label_binary.append(batch["label_binary"].cpu())
 
@@ -80,7 +82,7 @@ def main():
     y_pred = (probs >= threshold).astype(int)
 
     # Binary predictions using binary head logits
-    binary_logits    = torch.cat(all_binary_logits).numpy().squeeze()
+    binary_logits    = torch.cat(all_binary_logits).numpy().reshape(-1)
     probs_bin        = 1.0 / (1.0 + np.exp(-binary_logits))
     y_pred_bin       = (probs_bin >= binary_threshold).astype(int)
 

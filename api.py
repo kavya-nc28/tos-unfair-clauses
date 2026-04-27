@@ -1,56 +1,54 @@
+from __future__ import annotations
 from fastapi import FastAPI
 from typing import Dict
 import os
 import json
 import random
+import torch
+import numpy as np
 
 from src.inference.predict import load_model_and_tokenizer, predict_probabilities
-from src.inference.postprocess_input import build_clause_results
+from src.inference.postprocess_input import build_clause_results, overall_safety_score
+from src.config import ACTIVE_MODEL, MODELS_DIR
+
 
 app = FastAPI()
 
-model = None
-tokenizer = None
+# =========================
+# PATH HANDLING AND MODEL LOADING
+# =========================
+
+if ACTIVE_MODEL == "contrastive":
+    CHECKPOINT      = MODELS_DIR / "contrastive_legal_bert.pt"
+    THRESHOLD_FILE  = MODELS_DIR / "contrastive_threshold.json"
+else:
+    CHECKPOINT      = MODELS_DIR / "baseline_legal_bert.pt"
+    THRESHOLD_FILE  = MODELS_DIR / "baseline_threshold.json"
+
 THRESHOLD = 0.5
+if THRESHOLD_FILE.exists():
+    with open(THRESHOLD_FILE) as f:
+        THRESHOLD = json.load(f).get("threshold", 0.5)
 
-
-# =========================
-# PATH HANDLING (FIXED)
-# =========================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-MODEL_PATH = os.path.join(BASE_DIR, "models", "contrastive_legal_bert.pt")
-THRESHOLD_PATH = os.path.join(BASE_DIR, "models", "contrastive_threshold.json")
-
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model  = None
+tokenizer = None
 
 # =========================
 # LOAD MODEL SAFELY
 # =========================
-print(f"🔍 Looking for model at: {MODEL_PATH}")
+print(f"🔍 Looking for model at: {CHECKPOINT}")
 
 try:
-    if os.path.exists(MODEL_PATH):
-        print("✅ Model found. Loading...")
-
-        model, tokenizer = load_model_and_tokenizer(
-            checkpoint_path=MODEL_PATH,
-            device="cpu"
-        )
-
-        if os.path.exists(THRESHOLD_PATH):
-            with open(THRESHOLD_PATH) as f:
-                THRESHOLD = json.load(f).get("threshold", 0.5)
-
+    if CHECKPOINT.exists():                  
+        model, tokenizer = load_model_and_tokenizer(CHECKPOINT, device=device)
         print(f"✅ Model loaded. Threshold: {THRESHOLD}")
-
     else:
         print("⚠️ Model NOT found → fallback mode ENABLED")
-
 except Exception as e:
     print(f"❌ Model load failed: {e}")
-    model = None
-
-
+    model     = None
+    tokenizer = None
 # =========================
 # API
 # =========================
@@ -62,41 +60,29 @@ def predict(data: Dict):
     print(f"🔥 API HIT: {len(clauses)} clauses")
 
     if not clauses:
-        return {"results": []}
+        return {"results": [], "safety_score": 100, "error": "No clauses provided"}
 
     # =========================
     # FALLBACK
     # =========================
-    if model is None:
-        results = []
-
-        for c in clauses:
-            label = random.choice(["CRITICAL", "HIGH", "MEDIUM", "SAFE"])
-
-            results.append({
-                "id": c.get("id"),
-                "text": c.get("text"),
-                "severity_band": label,
+    if model is None or tokenizer is None:
+        results = [
+            {
+                "id":            c.get("id"),
+                "text":          c.get("text"),
+                "severity_band": random.choice(["CRITICAL", "HIGH", "MEDIUM", "SAFE"]),
                 "severity_score": random.randint(1, 10),
-                "explanation": "Fallback mode (model not loaded)"
-            })
-
-        return {"results": results}
+                "explanation":   "Fallback mode (model not loaded)",
+            }
+            for c in clauses
+        ]
+        return {"results": results, "safety_score": 50}
 
     # =========================
     # REAL MODEL
     # =========================
-    probs_multi, probs_binary = predict_probabilities(
-        clauses,
-        model,
-        tokenizer,
-        device="cpu"
-    )
+    probs_multi, probs_binary = predict_probabilities(clauses, model, tokenizer, device=device)
+    results = build_clause_results(clauses, probs_multi, threshold=THRESHOLD)
+    safety  = overall_safety_score(probs_binary)
 
-    results = build_clause_results(
-        clauses,
-        probs_multi,
-        threshold=THRESHOLD
-    )
-
-    return {"results": results}
+    return {"results": results, "safety_score": safety}

@@ -3,15 +3,12 @@ Map raw model outputs to severity scores and human-readable labels.
 """
 
 from typing import Tuple
+import math
 
 
-def logits_to_severity(logits) -> float:
-    """
-    TODO:
-    - Decide how to convert logits/probabilities into a 1–10 severity score.
-      Example (placeholder): severity = 10 * p(unfair).
-    """
-    raise NotImplementedError("Implement logits_to_severity().")
+def logits_to_severity(prob: float) -> int:
+    """Map sigmoid probability [0,1] to severity score 1–10."""
+    return max(1, min(10, math.ceil(prob * 10)))
 
 
 def severity_label(score: int) -> str:

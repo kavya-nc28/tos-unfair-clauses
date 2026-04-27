@@ -7,7 +7,8 @@ from pathlib import Path
 import json
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from typing import cast
+from torch.utils.data import DataLoader, Dataset as TorchDataset
 from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 
 from src.config import BASE_MODEL_NAME, BATCH_SIZE, MODELS_DIR
@@ -37,7 +38,7 @@ def evaluate_checkpoint(checkpoint_path: Path, device: torch.device) -> None:
     test_ds = ds["test"]
 
     test_loader = DataLoader(
-        test_ds,
+        cast(TorchDataset, test_ds),
         batch_size=BATCH_SIZE,
         shuffle=False,
         collate_fn=collate_fn,

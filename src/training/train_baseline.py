@@ -2,7 +2,9 @@ import torch
 import numpy as np
 import json
 from pathlib import Path
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset as TorchDataset
+from typing import cast
+
 from transformers import get_linear_schedule_with_warmup
 from sklearn.metrics import f1_score
 
@@ -125,8 +127,8 @@ def main():
     batch_size = 16
     num_epochs = 3
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
+    train_loader = DataLoader(cast(TorchDataset, train_ds), batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+    val_loader = DataLoader(cast(TorchDataset, val_ds), batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
 
     model = BaselineLegalBert(num_labels=8, use_binary_head=True, pos_weight=pos_weight)
     model.to(device)

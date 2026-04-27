@@ -103,8 +103,8 @@ class ContrastiveLegalBert(nn.Module):
             loss = self.lambda_cls * cls_loss + self.lambda_con * con_loss + bin_loss
 
         return {
-            "logits":        logits,
-            "binary_logits": binary_logit,
-            "embeddings":    z,
-            "loss":          loss,
+            "logits": logits,
+            "logits_binary": binary_logit.squeeze(-1),
+            "embeddings": z,
+            "loss": loss,
         }

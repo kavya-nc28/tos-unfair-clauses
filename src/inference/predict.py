@@ -114,6 +114,8 @@ def predict_probabilities(
                 return_tensors="pt",
             )
             encodings = {k: v.to(device) for k, v in encodings.items()}
+            if isinstance(model, ContrastiveLegalBert):
+                encodings.pop("token_type_ids", None)
 
             outputs = model(**encodings)
             logits = outputs["logits"]
@@ -121,6 +123,7 @@ def predict_probabilities(
 
             probs_multi = torch.sigmoid(logits).cpu().numpy()         
             probs_binary = torch.sigmoid(logits_bin).squeeze(-1).cpu().numpy()
+            probs_binary = np.atleast_1d(probs_binary)
 
             all_probs_multi.append(probs_multi)
             all_probs_binary.append(probs_binary)

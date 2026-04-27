@@ -117,6 +117,7 @@ def main():
     pos_counts = all_labels.sum(axis=0)
     neg_counts = len(train_ds) - pos_counts
     pos_weight = torch.tensor(neg_counts / np.clip(pos_counts, 1, None), dtype=torch.float)
+    pos_weight = torch.clamp(pos_weight, max=10.0)
     print("pos_weight:", pos_weight)
 
     val_ds = ds["validation"]

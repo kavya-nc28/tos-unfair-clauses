@@ -1,11 +1,13 @@
 from __future__ import annotations
 from fastapi import FastAPI
 from typing import Dict
-import os
+import os 
 import json
 import random
 import torch
 import numpy as np
+from datetime import datetime
+from pathlib import Path
 
 from src.inference.predict import load_model_and_tokenizer, predict_probabilities
 from src.inference.postprocess_input import build_clause_results, overall_safety_score
@@ -85,4 +87,20 @@ def predict(data: Dict):
     results = build_clause_results(clauses, probs_multi, threshold=THRESHOLD)
     safety  = overall_safety_score(probs_binary)
 
-    return {"results": results, "safety_score": safety}
+    response = {"results": results, "safety_score": safety}
+
+    # Save result to reports/
+    out_dir = Path("reports/inference_results")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_file = out_dir / f"result_{timestamp}.json"
+    with open(out_file, "w") as f:
+        json.dump({
+            "timestamp": timestamp,
+            "num_clauses": len(clauses),
+            "safety_score": safety,
+            "results": results
+        }, f, indent=2)
+    print(f"💾 Saved → {out_file}")
+
+    return response

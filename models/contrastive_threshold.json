@@ -1,0 +1,5 @@
+{
+  "threshold": 0.8500000000000001,
+  "binary_threshold": 0.8,
+  "best_val_micro_f1": 0.7269076305220884
+}

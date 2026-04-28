@@ -7,8 +7,8 @@ import torch
 from torch.utils.data import DataLoader, Dataset as TorchDataset
 from typing import cast
 from torch.utils.data import DataLoader
-from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
-
+from sklearn.metrics import f1_score, roc_auc_score, average_precision_score, ndcg_score
+from scipy.stats import kendalltau
 from src.config import MODELS_DIR, BATCH_SIZE
 from src.data.load_unfair_tos import prepare_unfair_tos_datasets
 from src.models.contrastive_legalbert import ContrastiveLegalBert
@@ -21,6 +21,41 @@ MAX_LENGTH = 256
 
 def sigmoid(x: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-x))
+
+def evaluate_ranking_metrics(all_probs: list, all_labels: list, k_values: list = [5, 10]) -> dict:
+    """
+    Compute nDCG@k and Kendall τ between model probability scores and true binary labels.
+
+    Args:
+        all_probs:  List of float — model's predicted probability per clause (binary head)
+        all_labels: List of int   — ground truth binary labels (1=unfair, 0=fair)
+        k_values:   List of k cutoffs for nDCG@k
+
+    Returns:
+        dict with nDCG@k for each k, and Kendall τ + p-value
+    """
+    probs  = np.array(all_probs)
+    labels = np.array(all_labels)
+
+    results = {}
+
+    # --- nDCG@k ---
+    # ndcg_score expects shape (1, n_samples)
+    for k in k_values:
+        k_capped = min(k, len(probs))
+        score = ndcg_score(
+            y_true  = labels.reshape(1, -1),
+            y_score = probs.reshape(1, -1),
+            k       = k_capped
+        )
+        results[f"nDCG@{k}"] = round(score, 4)
+
+    # --- Kendall τ ---
+    tau, p_value = kendalltau(probs, labels)
+    results["kendall_tau"]     = round(float(tau), 4)
+    results["kendall_p_value"] = round(float(p_value), 6)
+
+    return results
 
 
 def main():
@@ -100,12 +135,22 @@ def main():
     except ValueError:
         pr_auc = float("nan")
 
+    ranking_metrics = evaluate_ranking_metrics(
+        all_probs  = probs_bin.tolist(),
+        all_labels = y_true_bin.tolist(),
+        k_values   = [5, 10, 20]
+    )
+
     print("\n=== Contrastive Model Test Metrics ===")
     print(f"Multi-label Macro F1 : {macro_f1:.4f}")
     print(f"Multi-label Micro F1 : {micro_f1:.4f}")
     print(f"Binary F1            : {f1_bin:.4f}")
     print(f"Binary ROC-AUC       : {roc_auc:.4f}")
     print(f"Binary PR-AUC        : {pr_auc:.4f}")
+    print(f"nDCG@5               : {ranking_metrics['nDCG@5']}")
+    print(f"nDCG@10              : {ranking_metrics['nDCG@10']}")
+    print(f"nDCG@20              : {ranking_metrics['nDCG@20']}")
+    print(f"Kendall τ            : {ranking_metrics['kendall_tau']}  (p={ranking_metrics['kendall_p_value']})")
     print("\n=======================================\n")
 
     # Save results
@@ -117,6 +162,7 @@ def main():
         "pr_auc":           round(float(pr_auc),   4),
         "threshold":        threshold,
         "binary_threshold": binary_threshold,
+        **ranking_metrics,
     }
 
     reports_dir = Path("reports")
